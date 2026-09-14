@@ -16,7 +16,7 @@ except:
     st.stop()
 
 # Cấu hình mô hình AI
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-pro')
 
 # Bố cục 2 cột: Trái (Nhập liệu) - Phải (Kết quả)
 col1, col2 = st.columns(2)
