@@ -11,20 +11,15 @@ st.markdown("Dịch tài liệu y văn từ Tiếng Anh, Pháp, Đức sang Ti�
 # Lấy API Key bí mật từ cấu hình của Streamlit
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-except:
+except Exception as e:
     st.error("Chưa cấu hình API Key. Vui lòng thêm GOOGLE_API_KEY vào Streamlit Secrets.")
     st.stop()
 
-# Cấu hình mô hình AI
-# Tự động quét và chọn mô hình AI khả dụng
-danh_sach_model = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-
-if len(danh_sach_model) > 0:
-    # Ưu tiên chọn các mô hình đời mới (có chữ flash hoặc pro), nếu không thì lấy mô hình đầu tiên tìm thấy
-    ten_model_phu_hop = next((ten for ten in danh_sach_model if 'flash' in ten or 'pro' in ten), danh_sach_model[0])
-    model = genai.GenerativeModel(ten_model_phu_hop)
-else:
-    st.error("API Key của bạn không hỗ trợ mô hình sinh văn bản nào.")
+# Cấu hình mô hình AI - Sử dụng đích danh phiên bản mới nhất theo yêu cầu của hệ thống
+try:
+    model = genai.GenerativeModel('gemini-3.6-flash')
+except Exception as e:
+    st.error(f"Lỗi khởi tạo mô hình AI: {e}")
     st.stop()
 
 # Bố cục 2 cột: Trái (Nhập liệu) - Phải (Kết quả)
