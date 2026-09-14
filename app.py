@@ -1,90 +1,88 @@
 import streamlit as st
 import google.generativeai as genai
-import pypdf
+import docx
+import io
+import time
 
-# Cấu hình giao diện trang web
+# Cấu hình giao diện
 st.set_page_config(page_title="Dịch Thuật Y Khoa", page_icon="⚕️", layout="wide")
+st.title("⚕️ Trợ Lý Dịch Thuật Y Khoa AI (Hỗ trợ file Word)")
 
-st.title("⚕️ Trợ Lý Dịch Thuật Y Khoa AI")
-st.markdown("Dịch tài liệu y văn từ Tiếng Anh, Pháp, Đức sang Tiếng Việt với độ chuẩn xác cao.")
-
-# Lấy API Key bí mật từ cấu hình của Streamlit
+# Cấu hình API
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-except Exception as e:
-    st.error("Chưa cấu hình API Key. Vui lòng thêm GOOGLE_API_KEY vào Streamlit Secrets.")
+except Exception:
+    st.error("Chưa cấu hình API Key trong Streamlit Secrets.")
     st.stop()
 
-# Cấu hình mô hình AI - Sử dụng đích danh phiên bản mới nhất theo yêu cầu của hệ thống
+# Khởi tạo AI
 try:
     model = genai.GenerativeModel('gemini-3.6-flash')
 except Exception as e:
-    st.error(f"Lỗi khởi tạo mô hình AI: {e}")
+    st.error(f"Lỗi khởi tạo mô hình: {e}")
     st.stop()
 
-# Bố cục 2 cột: Trái (Nhập liệu) - Phải (Kết quả)
-col1, col2 = st.columns(2)
+st.info("💡 Mẹo: Hãy thử tải lên một file Word ngắn (1-2 trang) để kiểm tra độ giữ form trước khi dùng file lớn.")
 
-with col1:
-    st.subheader("Nguồn tài liệu")
-    ngon_ngu_nguon = st.selectbox("Chọn ngôn ngữ nguồn:", ["Tiếng Anh", "Tiếng Pháp", "Tiếng Đức"])
-    
-    # Tạo 2 Tab để người dùng dễ thao tác
-    tab1, tab2 = st.tabs(["📄 Tải lên file PDF", "📝 Dán văn bản"])
-    
-    with tab1:
-        file_pdf = st.file_uploader("Chọn file PDF từ máy tính của bạn:", type=["pdf"])
-        st.caption("Ứng dụng sẽ tự động đọc và trích xuất chữ từ PDF để dịch.")
-        
-    with tab2:
-        van_ban_nhap = st.text_area("Hoặc dán đoạn văn bản y khoa vào đây:", height=200)
-        
-    nut_dich = st.button("Bắt đầu dịch 🚀", use_container_width=True)
+ngon_ngu_nguon = st.selectbox("Chọn ngôn ngữ nguồn:", ["Tiếng Anh", "Tiếng Pháp", "Tiếng Đức"])
+file_word = st.file_uploader("Tải lên file Word (.docx) của bạn:", type=["docx"])
+nut_dich = st.button("Bắt đầu dịch và Giữ nguyên bố cục 🚀", use_container_width=True)
 
-with col2:
-    st.subheader("Bản dịch (Tiếng Việt)")
-    
-    if nut_dich:
-        noidung_candich = ""
+if nut_dich and file_word is not None:
+    try:
+        # 1. Đọc file Word gốc
+        doc = docx.Document(file_word)
         
-        # Ưu tiên xử lý file PDF nếu người dùng tải lên
-        if file_pdf is not None:
-            with st.spinner('Đang đọc file PDF...'):
-                try:
-                    # Dùng pypdf để đọc từng trang và lấy chữ
-                    doc = pypdf.PdfReader(file_pdf)
-                    for page in doc.pages:
-                        text = page.extract_text()
-                        if text:
-                            noidung_candich += text + "\n"
-                except Exception as e:
-                    st.error(f"Không thể đọc file PDF: {e}")
+        # Lọc ra những đoạn văn có chứa chữ (bỏ qua dòng trống)
+        cac_doan_van_co_chu = [p for p in doc.paragraphs if p.text.strip() != ""]
+        tong_so_doan = len(cac_doan_van_co_chu)
+        
+        if tong_so_doan == 0:
+            st.warning("File Word của bạn không có chữ nào để dịch.")
         else:
-            # Nếu không có file PDF, lấy dữ liệu từ ô nhập chữ
-            noidung_candich = van_ban_nhap
+            st.write(f"📂 Tìm thấy {tong_so_doan} đoạn văn bản cần dịch. Đang xử lý...")
+            thanh_tien_do = st.progress(0)
             
-        # Kiểm tra xem có dữ liệu để dịch chưa
-        if noidung_candich.strip() == "":
-            st.warning("Vui lòng tải lên một file PDF hoặc nhập văn bản!")
-        else:
-            with st.spinner('Đang dịch thuật, vui lòng chờ... (Có thể mất chút thời gian nếu tài liệu dài)'):
-                # Khung lệnh (Prompt) yêu cầu AI dịch thuật
-                prompt = f"""
-                Bạn là một bác sĩ chuyên khoa và biên dịch viên y khoa xuất sắc.
-                Hãy dịch nội dung {ngon_ngu_nguon} sau sang Tiếng Việt.
-                Yêu cầu:
-                - Văn phong y khoa chuyên nghiệp, chính xác.
-                - Giữ nguyên các danh pháp quốc tế (như tên thuốc, tên vi khuẩn, hoạt chất) hoặc mở ngoặc chú thích nếu cần.
-                - Nếu có từ viết tắt y khoa, hãy giải nghĩa nó.
-                - Trình bày kết quả rõ ràng, chia đoạn hợp lý để dễ đọc.
+            # 2. Vòng lặp dịch từng đoạn và thay thế trực tiếp
+            for i, para in enumerate(cac_doan_van_co_chu):
+                text_goc = para.text
                 
-                Nội dung cần dịch:
-                {noidung_candich}
+                prompt = f"""
+                Dịch đoạn văn bản y khoa {ngon_ngu_nguon} sau sang Tiếng Việt.
+                Chỉ trả về kết quả dịch, không giải thích gì thêm, giữ nguyên các thuật ngữ chuyên ngành.
+                Văn bản gốc: {text_goc}
                 """
                 
                 try:
+                    # Gửi AI dịch
                     response = model.generate_content(prompt)
-                    st.success("Dịch thành công!")
-                    st.write(response.text)
+                    # Ghi đè bản dịch lên đúng vị trí cũ trong Word
+                    para.text = response.text
                 except Exception as e:
-                    st.error(f"Có lỗi xảy ra với AI: {e}")
+                    # Nếu có lỗi (như quá tải mạng), ghi nhận lại nhưng không làm sập ứng dụng
+                    para.text = f"[LỖI DỊCH: {text_goc}]"
+                
+                # Cập nhật thanh tiến độ
+                thanh_tien_do.progress((i + 1) / tong_so_doan)
+                
+                # Cực kỳ quan trọng: Nghỉ 2 giây để Google không khóa AI vì spam gửi liên tục
+                time.sleep(2)
+            
+            st.success("🎉 Đã dịch xong toàn bộ tài liệu!")
+            
+            # 3. Đóng gói file Word mới để người dùng tải về
+            output = io.BytesIO()
+            doc.save(output)
+            
+            st.download_button(
+                label="📥 Bấm vào đây để TẢI FILE ĐÃ DỊCH VỀ MÁY",
+                data=output.getvalue(),
+                file_name="Ban_Dich_Y_Khoa.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            
+    except Exception as e:
+        st.error(f"Đã xảy ra lỗi khi đọc file: {e}")
+        
+elif nut_dich and file_word is None:
+    st.warning("Vui lòng tải lên một file Word trước khi bấm dịch!")
