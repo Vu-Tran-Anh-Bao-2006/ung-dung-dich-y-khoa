@@ -16,7 +16,16 @@ except:
     st.stop()
 
 # Cấu hình mô hình AI
-model = genai.GenerativeModel('gemini-pro')
+# Tự động quét và chọn mô hình AI khả dụng
+danh_sach_model = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+
+if len(danh_sach_model) > 0:
+    # Ưu tiên chọn các mô hình đời mới (có chữ flash hoặc pro), nếu không thì lấy mô hình đầu tiên tìm thấy
+    ten_model_phu_hop = next((ten for ten in danh_sach_model if 'flash' in ten or 'pro' in ten), danh_sach_model[0])
+    model = genai.GenerativeModel(ten_model_phu_hop)
+else:
+    st.error("API Key của bạn không hỗ trợ mô hình sinh văn bản nào.")
+    st.stop()
 
 # Bố cục 2 cột: Trái (Nhập liệu) - Phải (Kết quả)
 col1, col2 = st.columns(2)
